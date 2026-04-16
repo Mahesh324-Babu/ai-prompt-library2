@@ -1,0 +1,75 @@
+import json
+import redis
+from django.conf import settings
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from .models import Prompt
+
+# Connect to Redis
+r = redis.from_url(settings.REDIS_URL, decode_responses=True)
+
+
+def _prompt_to_dict(prompt, view_count=None):
+    data = {
+        "id": str(prompt.id),
+        "title": prompt.title,
+        "content": prompt.content,
+        "complexity": prompt.complexity,
+        "created_at": prompt.created_at.isoformat(),
+    }
+    if view_count is not None:
+        data["view_count"] = view_count
+    return data
+
+
+@csrf_exempt
+def prompt_list(request):
+    if request.method == "GET":
+        prompts = Prompt.objects.all()
+        return JsonResponse([_prompt_to_dict(p) for p in prompts], safe=False)
+
+    if request.method == "POST":
+        try:
+            body = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+        title = body.get("title", "").strip()
+        content = body.get("content", "").strip()
+        complexity = body.get("complexity")
+
+        errors = {}
+        if len(title) < 3:
+            errors["title"] = "Title must be at least 3 characters."
+        if len(content) < 20:
+            errors["content"] = "Content must be at least 20 characters."
+        try:
+            complexity = int(complexity)
+            if not (1 <= complexity <= 10):
+                errors["complexity"] = "Complexity must be between 1 and 10."
+        except (TypeError, ValueError):
+            errors["complexity"] = "Complexity must be an integer between 1 and 10."
+
+        if errors:
+            return JsonResponse({"errors": errors}, status=400)
+
+        prompt = Prompt.objects.create(title=title, content=content, complexity=complexity)
+        return JsonResponse(_prompt_to_dict(prompt), status=201)
+
+    return JsonResponse({"error": "Method not allowed"}, status=405)
+
+
+def prompt_detail(request, pk):
+    if request.method != "GET":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    try:
+        prompt = Prompt.objects.get(pk=pk)
+    except Prompt.DoesNotExist:
+        return JsonResponse({"error": "Prompt not found"}, status=404)
+
+    # Increment view count in Redis
+    redis_key = f"prompt:views:{pk}"
+    view_count = r.incr(redis_key)
+
+    return JsonResponse(_prompt_to_dict(prompt, view_count=view_count))

@@ -1,0 +1,18 @@
+from django.core.management.base import BaseCommand
+from prompts.models import Prompt
+
+
+class Command(BaseCommand):
+    help = "Seed the database with sample prompts"
+
+    def handle(self, *args, **kwargs):
+        samples = [
+            {"title": "Summarize an Article", "content": "Please summarize the following article in 3 bullet points, focusing on the key takeaways and main arguments presented.", "complexity": 3},
+            {"title": "Write a Python Function", "content": "Write a Python function that takes a list of integers and returns the second largest unique number. Include error handling for edge cases.", "complexity": 6},
+            {"title": "Creative Story Starter", "content": "Write the opening paragraph of a mystery novel set in a small coastal town during a storm. Use vivid sensory details and foreshadowing.", "complexity": 5},
+            {"title": "Debug This Code", "content": "Analyze the following code snippet for potential bugs, performance issues, and suggest improvements with explanations for each change.", "complexity": 7},
+            {"title": "Explain Like I'm Five", "content": "Explain the concept of machine learning to a 5-year-old using simple analogies and everyday examples they would understand.", "complexity": 2},
+        ]
+        for s in samples:
+            Prompt.objects.get_or_create(title=s["title"], defaults=s)
+        self.stdout.write(self.style.SUCCESS(f"Seeded {len(samples)} prompts."))
